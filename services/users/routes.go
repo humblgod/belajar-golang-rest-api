@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/humblgod/belajar-golang-rest-api/auth"
+	"github.com/humblgod/belajar-golang-rest-api/config"
 	"github.com/humblgod/belajar-golang-rest-api/types"
 	"github.com/humblgod/belajar-golang-rest-api/utils"
 )
@@ -41,9 +42,30 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := utils.Validate.Struct(payload); err != nil {
 		errors := err.(validator.ValidationErrors) 
 		utils.WriteError(w, http.StatusBadRequest, fmt.Errorf("payload validation error : %v", errors))
+		return
 	}
 
 	// check if user 
+	users, err := h.store.GetUserByEmail(payload.Email)
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, fmt.Errorf("email not found (no user found)"))
+		return
+	}
+
+	// check encrypt password
+	if !auth.ComparePassword(users.Password, payload.Password) {
+		utils.WriteError(w, http.StatusBadRequest, fmt.Errorf("user not found. invalid password"))
+		return
+	}
+
+	secretEnv := []byte(config.Envs.JWTSecret)
+	token, err := auth.CreateJWT(secretEnv, users.Id)
+	if err != nil {
+		utils.WriteError(w, http.StatusOK, fmt.Errorf("token has created"))
+		return
+	}
+	
+	utils.WriteJSON(w, http.StatusOK, map[string]string{"token" : token})	
 }
 
 func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +81,7 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	 if err := utils.Validate.Struct(payload); err != nil {
 		errors := err.(validator.ValidationErrors)
 		utils.WriteError(w, http.StatusBadRequest, fmt.Errorf("payload validation error : %v", errors))
+		return
 	 }
 
 	 // check if user already exists
